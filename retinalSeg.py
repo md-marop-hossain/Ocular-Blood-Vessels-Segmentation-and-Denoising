@@ -1,4 +1,3 @@
-# Import all necessary packages
 import numpy as np
 from matplotlib import pyplot as plt
 import cv2
@@ -18,8 +17,6 @@ from skimage.filters import threshold_otsu, rank
 from skimage.morphology import disk
 import pywt
 
-
-# Define Functions
 def threshold(img,k):
     ret = copy.deepcopy(img)
     ret[ret<k] = 0
@@ -47,8 +44,7 @@ def GlobalOtsu(img):
             final_var = var
             final_thresh = i
     return threshold(img,final_thresh)
-# The function GlobalOtsu performs Global Otsu Thresholding on the Enhanced Thick Vessel Image
-# before fusion with the Thin vessel image to give the final
+
 def AreaThreshold(img, area = 5):
     nlabels,labels,stats,centroid = cv2.connectedComponentsWithStats(np.uint8(img), 4, cv2.CV_32S)
 
@@ -86,19 +82,12 @@ def AccuracyMetrics(img,imggt):
     TN = sum(matches==0)
     FP = sum(mismatches==255)
     FN = sum(mismatches==0)
-#     print(matches.shape)
-#     print(mismatches.shape)
-#     print("TP ",TP)
-#     print("TN ",TN)
-#     print("FP ",FP)
-#     print("FN ",FN)
     Acc = (TP+TN)/(TP+TN+FP+FN)
     Sn = TP/(TP+FN)
     Sp = TN/(TN+FP)
     Auc = (Sn+Sp)/2
     return Acc,Sn,Sp,Auc
 
-#using wavelet method for image fusion
 def image_fusion(img1,img2):
     w1 = pywt.wavedec2(img1, 'db1')
     w2 = pywt.wavedec2(img2, 'db1')
@@ -113,31 +102,22 @@ def image_fusion(img1,img2):
     output = 255* ((output - amin)/(amax-amin))
     output = cv2.resize(output,img1.T.shape)
     return output
-#Image fusion of the Think Vesel and Otsu Global Thresholded Thick Vessel image is done to define both Thin and Thick vessels after Thresholding
-
-
 
 def Segment(ur):
     print(f"URL IS: {ur}")
-    #Obtain image
-    # url = "../dataset/im0319.ppm"
     url = ur
     img = cv2.imread(url)
     img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
 
-    #Split into 3 channels
     imgR = img[:,:,0]
     imgG = img[:,:,1]
     imgB = img[:,:,2]
 
-    #Pre-processing
-
-        #CLAHE
     clipLimit = 3
     clahe = cv2.createCLAHE(clipLimit=clipLimit, tileGridSize=(8,8))
     clahe_img = clahe.apply(imgG)
     print("CLAHE")
-        #Morphological Filters
+
     retinal_disc = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(9,9))
     Topen = cv2.morphologyEx(clahe_img,cv2.MORPH_OPEN,retinal_disc)
     Tclose = cv2.morphologyEx(Topen, cv2.MORPH_CLOSE, retinal_disc)
@@ -147,32 +127,28 @@ def Segment(ur):
     min_image = cv2.erode(TopHat, kernel)
     min_image = cv2.dilate(min_image, kernel)
 
-    #Implementation
-        #Obtain Thin Vessels
     HessThin = hessian_matrix(min_image, sigma=1.2, order='rc')
     EignThin = hessian_matrix_eigvals(HessThin) [1]
-        #Obtain Thick Vessels
+
     HessWide = hessian_matrix(min_image, sigma=4, order='rc')
     EignWide = hessian_matrix_eigvals(HessWide) [1]
-    #Eigenvalues of the Hessian Matrix of the Green Channel Image are taken with various Sigma values to give both Thick and Thin vessel enhanced images
+
     print("HESSIAN")
-        #Global Otsu Thresholding
+
     val1 = GlobalOtsu(1-EignWide)
 
-            #Normalisation
     thinN = cv2.normalize(1-EignThin,  None, 0, 255, cv2.NORM_MINMAX)
     val1 = cv2.normalize(val1,  None, 0, 80, cv2.NORM_MINMAX)
-        #Image Fusion
 
     imgFuse = image_fusion(val1,thinN)
     print("FUSION")
-        #Local Otsu Thresholding
+
     lOtsu = LocalOtsu2(imgFuse.astype('uint8'))
-        #Area Thresholding
+
     out = AreaThreshold(lOtsu,50)
     out[out!=0] = 255
     print("LOCAL AND AREA")
-    #Reference Image 
+
     urlRef = "testing/labels-ah/"+url[-10:-3]+"ah.ppm"
     Acc1 = -1
     Sn1  = -1
@@ -181,23 +157,12 @@ def Segment(ur):
     if os.path.exists(urlRef):
         imgRef = cv2.imread(urlRef)
         imgRef = imgRef[:,:,1]
-        # fig = plt.figure()
-        # fig.add_subplot(1, 2, 1)
-        # plt.imshow(out,cmap='gray')
-        # plt.title('Output')
-        # fig.add_subplot(1, 2, 2)
-        # plt.imshow(imgRef,cmap='gray')
-        # plt.title('Reference Image')
-        # plt.show()
 
         print("All Done")
-        #Performance criteria
         Acc1,Sn1,Sp1,Auc1 = AccuracyMetrics(out,imgRef)
-        #AccuracyMetrics is a function used to check how accurate the Vessem images in the Dataset are to our acquired output
 
         print(f"Accuracy Value for segmenation is {Acc1}")
         print(f"Sensitivity for segmenation is {Sn1}")
         print(f"Specificity for segmenation is {Sp1}")
         print(f"Receiver Operating Characteristic for segmenation is {Auc1}")
     return out,Acc1,Sn1,Sp1,Auc1
-# main()
